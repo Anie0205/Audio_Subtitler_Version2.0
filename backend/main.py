@@ -76,6 +76,7 @@ async def health_check():
     return {"status": "healthy", "service": "audio-subtitle-pipeline"}
 
 if __name__ == "__main__":
+<<<<<<< HEAD
     # Get port from environment variable (Render sets PORT)
     port = int(os.environ.get("PORT", 8000))
     host = os.environ.get("HOST", "0.0.0.0")
@@ -87,5 +88,13 @@ if __name__ == "__main__":
         host=host,
         port=port,
         reload=False,  # Disable reload in production
+=======
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False,
+>>>>>>> cc028dc0ebb435719e1410fa1131181e5eecb42d
         log_level="info"
     )
