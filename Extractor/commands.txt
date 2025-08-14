@@ -1,3 +1,0 @@
-Add Hugging Face token in the file 
-pip install -r requirements.txt
-python script-generator.py
