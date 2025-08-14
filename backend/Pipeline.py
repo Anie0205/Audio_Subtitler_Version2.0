@@ -1,19 +1,41 @@
 import os
+import sys
 import tempfile
 import shutil
 import subprocess
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 from moviepy.editor import VideoFileClip
 import torch
 import whisperx
 from whisperx.diarize import DiarizationPipeline
 from dotenv import load_dotenv
+from pathlib import Path
+from typing import Optional
+import uvicorn
 
-# Import your modules with correct relative paths
-from .Extractor import group_into_sentences, save_srt, save_dialogue_txt, PAUSE_THRESHOLD, MAX_SUBTITLE_DURATION
-from .translator import parse_script_file, parse_srt_file, translate_scene, parse_translated_dialogue, align_translations_to_srt, write_srt_file
-from .overlay import burn_subtitles_from_paths
+# Add current directory to path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir)
+
+# Import your modules with fallback handling
+try:
+    # Try relative imports first
+    from .Extractor import group_into_sentences, save_srt, save_dialogue_txt, PAUSE_THRESHOLD, MAX_SUBTITLE_DURATION
+    from .translator import parse_script_file, parse_srt_file, translate_scene, parse_translated_dialogue, align_translations_to_srt, write_srt_file
+    from .overlay import burn_subtitles_from_paths
+    print("✅ All modules imported successfully (relative)")
+except ImportError as e:
+    print(f"⚠️ Relative imports failed: {e}")
+    try:
+        # Fallback to absolute imports
+        from Extractor import group_into_sentences, save_srt, save_dialogue_txt, PAUSE_THRESHOLD, MAX_SUBTITLE_DURATION
+        from translator import parse_script_file, parse_srt_file, translate_scene, parse_translated_dialogue, align_translations_to_srt, write_srt_file
+        from overlay import burn_subtitles_from_paths
+        print("✅ All modules imported successfully (absolute)")
+    except ImportError as e2:
+        print(f"❌ All imports failed: {e2}")
+        raise ImportError(f"Failed to import required modules: {e2}")
 
 load_dotenv()
 
