@@ -1,0 +1,4 @@
+pythom -m venv transenv
+./transenv/Scripts/activate
+pip install requirements.txt
+python translation.py [TextFile.txt] [SRTFile.txt] [Target Language]
