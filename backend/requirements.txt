@@ -7,8 +7,8 @@ pydub==0.25.1
 ffmpy==0.3.2
 
 # PyTorch CPU builds
-torch==2.4.1 --extra-index-url https://download.pytorch.org/whl/cpu
-torchaudio==2.4.1 --extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchaudio
 
 # WhisperX
 whisperx==3.3.4
