@@ -1,3 +1,4 @@
 /transenv
 .env
 /_pycache_
+/venv
