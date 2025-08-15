@@ -1,7 +1,7 @@
 import os
 import requests
 import json
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 
 # -------------------- CONFIG --------------------
 PAUSE_THRESHOLD = 1.0  # seconds between words to split subtitles
