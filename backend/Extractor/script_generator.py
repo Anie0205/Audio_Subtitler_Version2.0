@@ -6,7 +6,7 @@ from moviepy import VideoFileClip
 # -------------------- CONFIG --------------------
 PAUSE_THRESHOLD = 1.0  # seconds between words to split subtitles
 MAX_SUBTITLE_DURATION = 8.0  # max length for a single subtitle in seconds
-WHISPERX_API_URL = "https://38c5ee2aa5e4.ngrok-free.app"  # Your Colab ngrok URL
+WHISPERX_API_URL = "https://d635e65ce4fc.ngrok-free.app"  # Your Colab ngrok URL
 # ------------------------------------------------
 
 # -------------------- HELPER FUNCTIONS --------------------
