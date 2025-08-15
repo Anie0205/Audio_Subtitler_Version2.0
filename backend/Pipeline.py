@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 from dotenv import load_dotenv
 from pathlib import Path
 from typing import Optional
