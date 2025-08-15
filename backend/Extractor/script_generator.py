@@ -1,47 +1,13 @@
 import os
-import whisperx
-from whisperx.diarize import DiarizationPipeline
-import torch
+import requests
+import json
 from moviepy.editor import VideoFileClip
 
 # -------------------- CONFIG --------------------
-VIDEO_PATH = "sample.mp4"
-AUDIO_PATH = "audio.wav"
-OUTPUT_SRT_PATH = "subtitles.srt"
-OUTPUT_TXT_PATH = "dialogue.txt"
 PAUSE_THRESHOLD = 1.0  # seconds between words to split subtitles
 MAX_SUBTITLE_DURATION = 8.0  # max length for a single subtitle in seconds
-HF_AUTH_TOKEN = os.getenv("HF_AUTH_TOKEN")  # replace with your token
+WHISPERX_API_URL = "https://38c5ee2aa5e4.ngrok-free.app"  # Your Colab ngrok URL
 # ------------------------------------------------
-
-# 1. Extract audio from video
-video = VideoFileClip(VIDEO_PATH)
-video.audio.write_audiofile(AUDIO_PATH, codec="pcm_s16le")
-
-# 2. Load WhisperX model
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model = whisperx.load_model("base", device, compute_type="float32")
-
-# 3. Transcribe audio
-audio = whisperx.load_audio(AUDIO_PATH)
-result = model.transcribe(audio)
-
-# 4. Align words to improve accuracy
-align_model, metadata = whisperx.load_align_model(
-    language_code=result["language"], device=device
-)
-result_aligned = whisperx.align(result["segments"], align_model, metadata, audio, device)
-
-# 5. Run speaker diarization
-diarize_model = DiarizationPipeline(
-    use_auth_token=HF_AUTH_TOKEN,
-    device=device
-)
-diarize_segments = diarize_model(AUDIO_PATH)
-
-# 6. Assign speakers to each word
-result_with_speakers = whisperx.assign_word_speakers(diarize_segments, result_aligned)
-
 
 # -------------------- HELPER FUNCTIONS --------------------
 def group_into_sentences(words, pause_threshold=1.0, max_duration=8.0):
@@ -114,21 +80,10 @@ def srt_time_format(seconds):
     return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
 
-# --- Added: language-agnostic smart subtitle wrapper ---
 def smart_wrap(text, max_chars_per_line=42):
     """
     Language-agnostic subtitle line breaker.
-    Rules:
-    - Max 2 lines, each ≤ max_chars_per_line
-    - Prefer break AFTER punctuation marks
-    - Then before conjunction/preposition-like small words (by length, not by fixed list)
-    - Avoid breaking:
-        * Noun from article/adjective (heuristic: small word before big word)
-        * First + last names (two consecutive capitalized words)
-        * Verb from auxiliary/reflexive/negation (small word after main word)
-        * Prepositional verbs (verb-like ending followed by short function word)
     """
-
     normalized = " ".join(text.split())
     if len(normalized) <= max_chars_per_line:
         return [normalized]
@@ -230,7 +185,6 @@ def smart_wrap(text, max_chars_per_line=42):
 
 def save_srt(subtitles, path):
     """Writes subtitles to an SRT file with at most 2 lines per cue."""
-
     with open(path, "w", encoding="utf-8") as f:
         for i, sub in enumerate(subtitles, 1):
             f.write(f"{i}\n")
@@ -243,10 +197,7 @@ def save_srt(subtitles, path):
 
 
 def save_dialogue_txt(subtitles, path):
-    """Writes only the dialogue lines (no timestamps) to a .txt file.
-    Consecutive lines from the same speaker are grouped together.
-    """
-
+    """Writes only the dialogue lines (no timestamps) to a .txt file."""
     def parse_speaker_and_text(labeled_text: str):
         # Expect format "Speaker: utterance"; fall back if missing colon
         parts = labeled_text.split(":", 1)
@@ -281,13 +232,116 @@ def save_dialogue_txt(subtitles, path):
 
         # flush last block
         flush_block(f, current_speaker or "Unknown", buffer)
-# -----------------------------------------------------------
 
-# 7. Create and save subtitles
-word_segments = result_with_speakers["word_segments"]
-subtitles = group_into_sentences(word_segments, pause_threshold=PAUSE_THRESHOLD, max_duration=MAX_SUBTITLE_DURATION)
-save_srt(subtitles, OUTPUT_SRT_PATH)
-save_dialogue_txt(subtitles, OUTPUT_TXT_PATH)
 
-print(f"✅ SRT file saved to {OUTPUT_SRT_PATH}")
-print(f"✅ Dialogue file saved to {OUTPUT_TXT_PATH}")
+# -------------------- EXTERNAL API FUNCTIONS --------------------
+def transcribe_with_external_api(audio_path):
+    """
+    Use your enhanced Colab-hosted WhisperX API for transcription with speaker diarization.
+    This replaces local ML model loading.
+    """
+    try:
+        # Prepare the audio file for upload
+        with open(audio_path, "rb") as audio_file:
+            files = {"file": ("audio.wav", audio_file, "audio/wav")}
+            
+            # Send request to your enhanced Colab API
+            response = requests.post(
+                f"{WHISPERX_API_URL}/transcribe",
+                files=files,
+                timeout=300  # 5 minute timeout for processing
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Check if this is the enhanced API response with speaker diarization
+                if "word_segments" in result:
+                    # Enhanced API response - return as is
+                    print("✅ Received enhanced API response with speaker diarization")
+                    return result
+                else:
+                    # Basic API response - process segments manually
+                    print("⚠️ Received basic API response, processing segments...")
+                    segments = []
+                    for segment in result.get("segments", []):
+                        words = segment.get("words", [])
+                        for word in words:
+                            segments.append({
+                                "start": word.get("start", 0),
+                                "end": word.get("end", 0),
+                                "word": word.get("word", ""),
+                                "speaker": word.get("speaker", "Speaker_0")  # Try to get real speaker
+                            })
+                    
+                    return {
+                        "word_segments": segments,
+                        "language": result.get("language", "en")
+                    }
+            else:
+                raise Exception(f"API request failed with status {response.status_code}: {response.text}")
+                
+    except Exception as e:
+        raise Exception(f"External API transcription failed: {e}")
+
+
+def process_video_pipeline(video_path, audio_path, output_srt_path, output_txt_path):
+    """
+    Main function to process video through the pipeline using external API.
+    This replaces local ML model loading.
+    """
+    try:
+        # 1. Extract audio from video
+        video = VideoFileClip(video_path)
+        if video.audio is not None:
+            video.audio.write_audiofile(audio_path, codec="pcm_s16le")
+        else:
+            raise Exception("No audio track found in video")
+        video.close()
+
+        # 2. Transcribe using external API (no local models!)
+        print("🔄 Transcribing audio using external WhisperX API...")
+        result = transcribe_with_external_api(audio_path)
+        
+        # 3. Generate subtitles
+        print("🔄 Generating subtitles...")
+        subtitles = group_into_sentences(
+            result["word_segments"],
+            pause_threshold=PAUSE_THRESHOLD,
+            max_duration=MAX_SUBTITLE_DURATION
+        )
+
+        # 4. Save outputs
+        save_srt(subtitles, output_srt_path)
+        save_dialogue_txt(subtitles, output_txt_path)
+
+        print(f"✅ SRT file saved to {output_srt_path}")
+        print(f"✅ Dialogue file saved to {output_txt_path}")
+        
+        return subtitles
+
+    except Exception as e:
+        print(f"❌ Error processing video: {e}")
+        raise
+
+
+# Example usage (commented out to avoid execution at import time)
+if __name__ == "__main__":
+    # Configuration for direct execution
+    VIDEO_PATH = "sample.mp4"
+    AUDIO_PATH = "audio.wav"
+    OUTPUT_SRT_PATH = "subtitles.srt"
+    OUTPUT_TXT_PATH = "dialogue.txt"
+    
+    try:
+        subtitles = process_video_pipeline(
+            video_path=VIDEO_PATH,
+            audio_path=AUDIO_PATH,
+            output_srt_path=OUTPUT_SRT_PATH,
+            output_txt_path=OUTPUT_TXT_PATH
+        )
+        print(f"🎉 Successfully processed video! Generated {len(subtitles)} subtitles.")
+        
+    except Exception as e:
+        print(f"❌ Failed to process video: {e}")
+        exit(1)

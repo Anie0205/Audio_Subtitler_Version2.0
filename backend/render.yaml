@@ -3,7 +3,7 @@ services:
     name: audio-subtitle-pipeline
     env: python
     plan: starter
-    buildCommand: pip install -r requirements-deploy.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: python run.py
     envVars:
       - key: PYTHON_VERSION

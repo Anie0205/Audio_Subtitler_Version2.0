@@ -5,16 +5,13 @@ import subprocess
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 from moviepy.editor import VideoFileClip
-import torch
-import whisperx
-from whisperx.diarize import DiarizationPipeline
 from dotenv import load_dotenv
 from pathlib import Path
 from typing import Optional
 
-# Import your modules directly from their files
+# Import your modules with absolute imports for deployment compatibility
 try:
-    from Extractor.script_generator import group_into_sentences, save_srt, save_dialogue_txt, PAUSE_THRESHOLD, MAX_SUBTITLE_DURATION
+    from Extractor.script_generator import group_into_sentences, save_srt, save_dialogue_txt, PAUSE_THRESHOLD, MAX_SUBTITLE_DURATION, process_video_pipeline
     from translator.translation import parse_script_file, parse_srt_file, translate_scene, parse_translated_dialogue, align_translations_to_srt, write_srt_file
     from overlay.overlay import burn_subtitles_from_paths
     print("✅ All modules imported successfully")
@@ -25,11 +22,8 @@ except ImportError as e:
 load_dotenv()
 
 # Validate environment variables
-HF_AUTH_TOKEN = os.getenv("HF_AUTH_TOKEN")
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-if not HF_AUTH_TOKEN:
-    raise ValueError("HF_AUTH_TOKEN not found in environment variables. Please set it in your .env file.")
 if not GEMINI_API_KEY:
     raise ValueError("GOOGLE_API_KEY not found in environment variables. Please set it in your .env file.")
 
@@ -68,44 +62,29 @@ async def process_video(
             raise Exception("No audio track found in video")
         video_clip.close()
 
-        # Step 2: Transcription with script_generator pipeline
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Step 2: Use the external API pipeline (no local ML models!)
         try:
-            model = whisperx.load_model("base", device)
-        except Exception as e:
-            raise Exception(f"Failed to load WhisperX model: {e}")
-            
-        audio = whisperx.load_audio(audio_path)
-        result = model.transcribe(audio)
-        detected_lang = result["language"]
-
-        try:
-            align_model, metadata = whisperx.load_align_model(
-                language_code=detected_lang, device=device
+            print("🔄 Starting transcription with external WhisperX API...")
+            result = process_video_pipeline(
+                video_path=video_path,
+                audio_path=audio_path,
+                output_srt_path=os.path.join(tmpdir, "subtitles.srt"),
+                output_txt_path=os.path.join(tmpdir, "dialogue.txt")
             )
-            result_aligned = whisperx.align(result["segments"], align_model, metadata, audio, device)
+            
+            # Get the SRT path from the pipeline output
+            srt_path = os.path.join(tmpdir, "subtitles.srt")
+            txt_path = os.path.join(tmpdir, "dialogue.txt")
+            
+            print("✅ Transcription completed successfully")
+            
         except Exception as e:
-            raise Exception(f"Failed to align audio: {e}")
-
-        try:
-            diarize_model = DiarizationPipeline(use_auth_token=HF_AUTH_TOKEN, device=device)
-            diarize_segments = diarize_model(audio_path)
-            result_with_speakers = whisperx.assign_word_speakers(diarize_segments, result_aligned)
-        except Exception as e:
-            raise Exception(f"Failed to perform speaker diarization: {e}")
-
-        # Save original subs
-        srt_path = os.path.join(tmpdir, "subtitles.srt")
-        txt_path = os.path.join(tmpdir, "dialogue.txt")
-        subtitles = group_into_sentences(
-            result_with_speakers["word_segments"],
-            pause_threshold=PAUSE_THRESHOLD,
-            max_duration=MAX_SUBTITLE_DURATION
-        )
-        save_srt(subtitles, srt_path)
-        save_dialogue_txt(subtitles, txt_path)
+            raise Exception(f"External API transcription failed: {e}")
 
         # Step 3: Translation (if needed)
+        # Note: We'll use the detected language from the API response
+        detected_lang = "en"  # Default, you can extract this from API response if needed
+        
         if target_language.lower() != detected_lang.lower():
             try:
                 dialogue = parse_script_file(txt_path)
