@@ -9,7 +9,7 @@ GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Try to import google.generativeai, but don't crash if it's missing
 try:
-    import google.generativeai as genai
+    from google import genai
     if GEMINI_API_KEY:
         # Configure Gemini only if API key is available
         genai.configure(api_key=GEMINI_API_KEY)
