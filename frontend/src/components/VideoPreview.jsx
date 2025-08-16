@@ -199,7 +199,7 @@ const VideoPreview = ({
       formData.append('target_language', targetLanguage)
       formData.append('style_json', JSON.stringify(styleConfig))
       
-      const endpoint = srtFile ? '/overlay/overlay' : '/pipeline/process'
+      const endpoint = srtFile ? ENDPOINTS.OVERLAY_OVERLAY : ENDPOINTS.PIPELINE_PROCESS
       if (srtFile) {
         formData.append('srt', srtFile)
       }

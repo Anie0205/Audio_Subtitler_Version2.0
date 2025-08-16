@@ -29,6 +29,7 @@ export const ENDPOINTS = {
   PIPELINE_PROCESS: "/pipeline/process",
   PIPELINE_OVERLAY: "/pipeline/overlay",
   OVERLAY_OVERLAY: "/overlay/overlay",
+  TRANSLATOR_TRANSLATE: "/translator/translate",
   HEALTH: "/health",
 };
 

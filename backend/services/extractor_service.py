@@ -28,6 +28,8 @@ class ExtractorService:
     def transcribe_audio(self, audio_path):
         """Send audio to external extractor service for transcription"""
         try:
+            print(f"🔄 Sending audio to transcription service: {self.base_url}{self.transcribe_endpoint}")
+            
             with open(audio_path, "rb") as audio_file:
                 files = {"file": ("audio.wav", audio_file, "audio/wav")}
                 
@@ -36,6 +38,8 @@ class ExtractorService:
                     files=files,
                     timeout=TRANSCRIPTION_TIMEOUT
                 )
+                
+                print(f"📡 Transcription API response status: {response.status_code}")
                 
                 if response.status_code == 200:
                     result = response.json()
@@ -59,8 +63,14 @@ class ExtractorService:
                     else:
                         raise Exception("Unexpected API response format")
                 else:
+                    print(f"❌ Transcription API failed with status {response.status_code}")
+                    print(f"Response content: {response.text[:500]}...")
                     raise Exception(f"Transcription API failed with status {response.status_code}: {response.text}")
                     
+        except requests.exceptions.Timeout:
+            raise Exception(f"Transcription API request timed out after {TRANSCRIPTION_TIMEOUT} seconds")
+        except requests.exceptions.ConnectionError:
+            raise Exception(f"Failed to connect to transcription service at {self.base_url}")
         except Exception as e:
             raise Exception(f"Transcription service failed: {e}")
     

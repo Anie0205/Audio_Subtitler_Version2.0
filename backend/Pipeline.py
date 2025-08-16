@@ -2,16 +2,23 @@ import os
 import tempfile
 import shutil
 import json
+import sys
+from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from moviepy import VideoFileClip
 from dotenv import load_dotenv
-from pathlib import Path
 from typing import Optional
+
+# Add the backend directory to Python path for proper imports
+backend_dir = Path(__file__).parent
+sys.path.insert(0, str(backend_dir))
 
 # Import services
 try:
-    from services import ExtractorService, TranslatorService, OverlayService
+    from services.extractor_service import ExtractorService
+    from services.translator_service import TranslatorService
+    from services.overlay_service import OverlayService
     from Extractor.script_generator import group_into_sentences, save_srt, save_dialogue_txt, PAUSE_THRESHOLD, MAX_SUBTITLE_DURATION
     print("✅ All modules imported successfully")
 except ImportError as e:
