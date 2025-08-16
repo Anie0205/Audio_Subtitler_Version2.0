@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # Import translation functions
 try:
-    from translation import parse_srt_file, translate_scene, parse_translated_dialogue, align_translations_to_srt, write_srt_file
+    from .translation import parse_srt_file, translate_scene, parse_translated_dialogue, align_translations_to_srt, write_srt_file
     print("✅ Translation module imported successfully")
 except ImportError as e:
     print(f"❌ Translation module import failed: {e}")

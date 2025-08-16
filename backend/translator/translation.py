@@ -2,18 +2,29 @@ import os
 import sys
 import re
 from dotenv import load_dotenv
-import google.generativeai as genai
 
 # Load environment variables
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-if not GEMINI_API_KEY:
-    raise ValueError("API key not found. Please set GEMINI_API_KEY in your .env file.")
+# Try to import google.generativeai, but don't crash if it's missing
+try:
+    import google.generativeai as genai
+    if GEMINI_API_KEY:
+        # Configure Gemini only if API key is available
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        GEMINI_AVAILABLE = True
+    else:
+        print("⚠️ GOOGLE_API_KEY not set - translation will use fallback methods")
+        GEMINI_AVAILABLE = False
+except ImportError:
+    print("⚠️ google-generativeai not installed - translation will use fallback methods")
+    GEMINI_AVAILABLE = False
+except Exception as e:
+    print(f"⚠️ Error configuring Gemini: {e} - translation will use fallback methods")
+    GEMINI_AVAILABLE = False
 
-# Configure Gemini
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.0-flash')
 
 def parse_script_file(script_path):
     dialogue = []
@@ -61,9 +72,21 @@ Output only the translated dialogue lines in the same format.
     return prompt
 
 def translate_scene(dialogue, target_lang):
-    prompt = generate_translation_prompt(dialogue, target_lang)
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    if not GOOGLE_AI_AVAILABLE:
+        # Fallback: return original text with warning
+        print(f"⚠️ Translation service not available - returning original text")
+        return "\n".join([f"{d['speaker']}: {d['text']}" for d in dialogue])
+    
+    try:
+        prompt = generate_translation_prompt(dialogue, target_lang)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"⚠️ Google AI translation failed: {e} - returning original text")
+        return "\n".join([f"{d['speaker']}: {d['text']}" for d in dialogue])
 
 def parse_translated_dialogue(translated_text):
     dialogue = []
@@ -103,6 +126,11 @@ def translate_line(text, target_lang, max_retries=3):
     Used as fallback when script dialogue runs out.
     Includes retry logic for better reliability.
     """
+    if not GOOGLE_AI_AVAILABLE:
+        # Fallback: return original text with warning
+        print(f"⚠️ Translation service not available - returning original text")
+        return text
+    
     # Clean Japanese text first for better translation
     cleaned_text = clean_japanese_text(text)
     
@@ -114,7 +142,10 @@ You are a professional translator. Translate this text into {target_lang}, keepi
 Original: "{cleaned_text}"
 Output (only translation, no extras):
 """
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
             translated = response.text.strip()
             
             # Validate that we got a proper translation
@@ -135,11 +166,19 @@ Output (only translation, no extras):
     return f"[TRANSLATION FAILED] {cleaned_text}"
 
 def choose_best_variant(original_text, variants_text, target_lang):
+    if not GOOGLE_AI_AVAILABLE:
+        # Fallback: return first variant or original text
+        variants = [v.strip() for v in variants_text.split('/') if v.strip()]
+        if variants:
+            return variants[0]
+        return original_text
+    
     variants = [v.strip() for v in variants_text.split('/') if v.strip()]
     if len(variants) == 1:
         return variants[0]
 
-    prompt = f"""
+    try:
+        prompt = f"""
 You are a subtitle expert and native {target_lang} speaker. Given the original English sentence:
 "{original_text}"
 
@@ -149,8 +188,14 @@ Here are multiple translation options:
 Please choose the best single subtitle translation option that is clear, natural, and appropriate for viewers.
 Reply ONLY with the chosen variant, no explanations.
 """
-    response = model.generate_content(prompt)
-    return response.text.strip()
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"⚠️ Google AI variant selection failed: {e} - returning first variant")
+        return variants[0] if variants else original_text
 
 def align_translations_to_srt(srt_subtitles, translated_dialogue, target_lang):
     """
