@@ -5,7 +5,7 @@ load_dotenv()
 
 # Service URLs - these should be configured via environment variables
 # IMPORTANT: Update EXTRACTOR_SERVICE_URL when your ngrok tunnel changes
-EXTRACTOR_SERVICE_URL = os.getenv("EXTRACTOR_SERVICE_URL", "https://1585d4e84af4.ngrok-free.app")
+EXTRACTOR_SERVICE_URL = os.getenv("EXTRACTOR_SERVICE_URL", "https://592b7763ef4d.ngrok-free.app/")
 TRANSLATOR_SERVICE_URL = os.getenv("TRANSLATOR_SERVICE_URL", "https://audio-subtitler-version2-0.onrender.com")
 OVERLAY_SERVICE_URL = os.getenv("OVERLAY_SERVICE_URL", "https://audio-subtitler-version2-0.onrender.com")
 
