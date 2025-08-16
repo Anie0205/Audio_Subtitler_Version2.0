@@ -39,6 +39,25 @@ except ImportError as e:
     
     app.mount("/pipeline", pipeline_app)
 
+# Import and include the translator routes
+try:
+    # Import directly from translator_api.py
+    from translator.translator_api import app as translator_app
+    app.mount("/translator", translator_app)
+    print("✅ Translator module loaded successfully")
+except ImportError as e:
+    print(f"❌ Translator import failed: {e}")
+    # Create a minimal translator app to prevent crashes
+    from fastapi import APIRouter
+    translator_app = FastAPI(title="Translator (Fallback)")
+    translator_app.router = APIRouter()
+    
+    @translator_app.get("/")
+    async def translator_fallback():
+        return {"error": "Translator module failed to load", "details": str(e)}
+    
+    app.mount("/translator", translator_app)
+
 # Import and include the overlay routes
 try:
     # Import directly from overlay.py
@@ -63,6 +82,8 @@ async def root():
         "message": "Audio-Subtitle Pipeline API is running",
         "endpoints": {
             "pipeline": "/pipeline/process",
+            "pipeline_overlay": "/pipeline/overlay",
+            "translator": "/translator/translate",
             "overlay": "/overlay/overlay",
             "docs": "/docs"
         }

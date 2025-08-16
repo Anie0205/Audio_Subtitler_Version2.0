@@ -1,135 +1,144 @@
-import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Button } from '@/components/ui/button.jsx'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.jsx'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.jsx'
-import { Label } from '@/components/ui/label.jsx'
-import { Upload, Video, ArrowRight, Sparkles, Loader2 } from 'lucide-react'
-import { buildApiUrl, ENDPOINTS } from '../config/api.js'
+import { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button.jsx";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card.jsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.jsx";
+import { Label } from "@/components/ui/label.jsx";
+import { Upload, Video, ArrowRight, Sparkles, Loader2 } from "lucide-react";
+import { buildApiUrl, ENDPOINTS } from "../config/api.js";
 
 const HomePage = () => {
-  const [videoFile, setVideoFile] = useState(null)
-  const [targetLanguage, setTargetLanguage] = useState('en')
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [dragActive, setDragActive] = useState(false)
-  const fileInputRef = useRef(null)
-  const navigate = useNavigate()
+  const [videoFile, setVideoFile] = useState(null);
+  const [targetLanguage, setTargetLanguage] = useState("en");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef(null);
+  const navigate = useNavigate();
 
   const languages = [
-    { code: 'en', name: 'English' },
-    { code: 'es', name: 'Spanish' },
-    { code: 'fr', name: 'French' },
-    { code: 'de', name: 'German' },
-    { code: 'it', name: 'Italian' },
-    { code: 'pt', name: 'Portuguese' },
-    { code: 'ru', name: 'Russian' },
-    { code: 'ja', name: 'Japanese' },
-    { code: 'ko', name: 'Korean' },
-    { code: 'zh', name: 'Chinese' },
-    { code: 'ar', name: 'Arabic' },
-    { code: 'hi', name: 'Hindi' }
-  ]
+    { code: "en", name: "English" },
+    { code: "es", name: "Spanish" },
+    { code: "fr", name: "French" },
+    { code: "de", name: "German" },
+    { code: "it", name: "Italian" },
+    { code: "pt", name: "Portuguese" },
+    { code: "ru", name: "Russian" },
+    { code: "ja", name: "Japanese" },
+    { code: "ko", name: "Korean" },
+    { code: "zh", name: "Chinese" },
+    { code: "ar", name: "Arabic" },
+    { code: "hi", name: "Hindi" },
+  ];
 
   const handleDrag = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true)
-    } else if (e.type === 'dragleave') {
-      setDragActive(false)
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
     }
-  }
+  };
 
   const handleDrop = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
-    
-    const files = e.dataTransfer.files
-    if (files && files[0] && files[0].type.startsWith('video/')) {
-      setVideoFile(files[0])
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files[0] && files[0].type.startsWith("video/")) {
+      setVideoFile(files[0]);
     }
-  }
+  };
 
   const handleFileChange = (e) => {
-    const file = e.target.files[0]
-    if (file && file.type.startsWith('video/')) {
-      setVideoFile(file)
+    const file = e.target.files[0];
+    if (file && file.type.startsWith("video/")) {
+      setVideoFile(file);
     }
-  }
+  };
 
   const handleGoClick = async () => {
-    if (!videoFile) return
+    if (!videoFile) return;
 
-    setIsProcessing(true)
+    setIsProcessing(true);
 
     try {
       // Send video to backend for initial processing (transcription/translation)
-      const formData = new FormData()
-      formData.append('video', videoFile)
-      formData.append('target_language', targetLanguage)
-      formData.append('style_json', JSON.stringify({
-        font: 'Arial',
-        font_size: 28,
-        bold: false,
-        italic: false,
-        font_color: '#FFFFFF',
-        outline_color: '#000000',
-        outline_thickness: 2,
-        shadow_offset: 0,
-        alignment: 2,
-        margin_v: 30
-      }))
+      const formData = new FormData();
+      formData.append("video", videoFile);
+      formData.append("target_language", targetLanguage);
+      formData.append(
+        "style_json",
+        JSON.stringify({
+          font: "Arial",
+          font_size: 28,
+          bold: false,
+          italic: false,
+          font_color: "#FFFFFF",
+          outline_color: "#000000",
+          outline_thickness: 2,
+          shadow_offset: 0,
+          alignment: 2,
+          margin_v: 30,
+        })
+      );
 
       const response = await fetch(buildApiUrl(ENDPOINTS.PIPELINE_PROCESS), {
-        method: 'POST',
-        body: formData
-      })
+        method: "POST",
+        body: formData,
+      });
 
       if (response.ok) {
-        // Get the processed video blob and SRT data
-        const processedVideoBlob = await response.blob()
-        
-        // Store video and SRT data in sessionStorage for the overlay page
-        const videoUrl = URL.createObjectURL(videoFile)
-        const processedVideoUrl = URL.createObjectURL(processedVideoBlob)
-        
-        sessionStorage.setItem('originalVideo', videoUrl)
-        sessionStorage.setItem('processedVideo', processedVideoUrl)
-        sessionStorage.setItem('targetLanguage', targetLanguage)
-        sessionStorage.setItem('videoFileName', videoFile.name)
-        
-        // Navigate to overlay page
-        navigate('/overlay')
+        // Get the SRT data from the response
+        const result = await response.json();
+
+        if (result.status === "success") {
+          // Store video and SRT data in sessionStorage for the overlay page
+          const videoUrl = URL.createObjectURL(videoFile);
+
+          sessionStorage.setItem("originalVideo", videoUrl);
+          sessionStorage.setItem("srtContent", result.srt_content);
+          sessionStorage.setItem("targetLanguage", targetLanguage);
+          sessionStorage.setItem("videoFileName", videoFile.name);
+          sessionStorage.setItem("subtitleCount", result.subtitle_count);
+
+          // Navigate to overlay page
+          navigate("/overlay");
+        } else {
+          throw new Error(result.error || "Processing failed");
+        }
       } else {
-        console.error('Processing failed:', await response.text())
-        // For demo purposes, still navigate to overlay page with original video
-        const videoUrl = URL.createObjectURL(videoFile)
-        sessionStorage.setItem('originalVideo', videoUrl)
-        sessionStorage.setItem('targetLanguage', targetLanguage)
-        sessionStorage.setItem('videoFileName', videoFile.name)
-        navigate('/overlay')
+        const errorText = await response.text();
+        console.error("Processing failed:", errorText);
+        throw new Error(`Processing failed: ${errorText}`);
       }
     } catch (error) {
-      console.error('Error processing video:', error)
-      // For demo purposes, still navigate to overlay page with original video
-      const videoUrl = URL.createObjectURL(videoFile)
-      sessionStorage.setItem('originalVideo', videoUrl)
-      sessionStorage.setItem('targetLanguage', targetLanguage)
-      sessionStorage.setItem('videoFileName', videoFile.name)
-      navigate('/overlay')
+      console.error("Error processing video:", error);
+      alert(`Error processing video: ${error.message}`);
     } finally {
-      setIsProcessing(false)
+      setIsProcessing(false);
     }
-  }
+  };
 
   const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
 
   return (
     <div className="min-h-screen gradient-bg-alt flex items-center justify-center p-4">
@@ -145,7 +154,8 @@ const HomePage = () => {
             </h1>
           </div>
           <p className="text-lg text-muted-foreground max-w-md mx-auto">
-            Transform your videos with AI-powered subtitles. Upload, customize, and download in minutes.
+            Transform your videos with AI-powered subtitles. Upload, customize,
+            and download in minutes.
           </p>
         </div>
 
@@ -165,14 +175,14 @@ const HomePage = () => {
               <Label className="text-base font-medium text-card-foreground">
                 Upload Video File
               </Label>
-              
+
               <div
                 className={`relative border-2 border-dashed rounded-xl p-8 transition-all duration-200 cursor-pointer ${
                   dragActive
-                    ? 'border-primary bg-primary/5 scale-[1.02]'
+                    ? "border-primary bg-primary/5 scale-[1.02]"
                     : videoFile
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50 hover:bg-accent/50'
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/50 hover:bg-accent/50"
                 }`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
@@ -187,7 +197,7 @@ const HomePage = () => {
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                
+
                 {videoFile ? (
                   <div className="text-center space-y-3">
                     <div className="flex items-center justify-center">
@@ -196,7 +206,9 @@ const HomePage = () => {
                       </div>
                     </div>
                     <div>
-                      <p className="font-medium text-card-foreground">{videoFile.name}</p>
+                      <p className="font-medium text-card-foreground">
+                        {videoFile.name}
+                      </p>
                       <p className="text-sm text-muted-foreground">
                         {formatFileSize(videoFile.size)}
                       </p>
@@ -205,10 +217,10 @@ const HomePage = () => {
                       variant="outline"
                       size="sm"
                       onClick={(e) => {
-                        e.stopPropagation()
-                        setVideoFile(null)
+                        e.stopPropagation();
+                        setVideoFile(null);
                         if (fileInputRef.current) {
-                          fileInputRef.current.value = ''
+                          fileInputRef.current.value = "";
                         }
                       }}
                     >
@@ -278,7 +290,8 @@ const HomePage = () => {
 
             {videoFile && (
               <p className="text-center text-sm text-muted-foreground">
-                Your video will be processed and you'll be taken to the subtitle editor
+                Your video will be processed and you'll be taken to the subtitle
+                editor
               </p>
             )}
           </CardContent>
@@ -316,8 +329,7 @@ const HomePage = () => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default HomePage
-
+export default HomePage;

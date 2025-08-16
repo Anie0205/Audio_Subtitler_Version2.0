@@ -1,19 +1,18 @@
 import os
 import tempfile
 import shutil
-import subprocess
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+import json
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from moviepy import VideoFileClip
 from dotenv import load_dotenv
 from pathlib import Path
 from typing import Optional
 
-# Import your modules with absolute imports for deployment compatibility
+# Import services
 try:
-    from Extractor.script_generator import group_into_sentences, save_srt, save_dialogue_txt, PAUSE_THRESHOLD, MAX_SUBTITLE_DURATION, process_video_pipeline
-    from translator.translation import parse_script_file, parse_srt_file, translate_scene, parse_translated_dialogue, align_translations_to_srt, write_srt_file
-    from overlay.overlay import burn_subtitles_from_paths
+    from services import ExtractorService, TranslatorService, OverlayService
+    from Extractor.script_generator import group_into_sentences, save_srt, save_dialogue_txt, PAUSE_THRESHOLD, MAX_SUBTITLE_DURATION
     print("✅ All modules imported successfully")
 except ImportError as e:
     print(f"❌ Module import failed: {e}")
@@ -21,22 +20,10 @@ except ImportError as e:
 
 load_dotenv()
 
-# Validate environment variables
-GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
-
-if not GEMINI_API_KEY:
-    raise ValueError("GOOGLE_API_KEY not found in environment variables. Please set it in your .env file.")
-
-# Check if FFmpeg is available
-def check_ffmpeg():
-    try:
-        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
-
-if not check_ffmpeg():
-    raise RuntimeError("FFmpeg not found. Please install FFmpeg and ensure it's in your PATH.")
+# Initialize services
+extractor_service = ExtractorService()
+translator_service = TranslatorService()
+overlay_service = OverlayService()
 
 app = FastAPI()
 
@@ -46,6 +33,12 @@ async def process_video(
     target_language: str = Form(...),
     style_json: str = Form(...)
 ):
+    """
+    Main pipeline endpoint that orchestrates the distributed processing:
+    1. Extract audio and transcribe using external extractor service
+    2. Translate using external translator service (if needed)
+    3. Return SRT data for frontend customization
+    """
     tmpdir = tempfile.mkdtemp()
     try:
         # Save uploaded video
@@ -53,58 +46,106 @@ async def process_video(
         with open(video_path, "wb") as f:
             shutil.copyfileobj(video.file, f)
 
-        # Step 1: Extract audio
-        audio_path = os.path.join(tmpdir, "audio.wav")
-        video_clip = VideoFileClip(video_path)
-        if video_clip.audio is not None:
-            video_clip.audio.write_audiofile(audio_path, codec="pcm_s16le")
-        else:
-            raise Exception("No audio track found in video")
-        video_clip.close()
-
-        # Step 2: Use the external API pipeline (no local ML models!)
+        # Step 1: Extract audio and transcribe using external extractor service
         try:
-            print("🔄 Starting transcription with external WhisperX API...")
-            result = process_video_pipeline(
-                video_path=video_path,
-                audio_path=audio_path,
-                output_srt_path=os.path.join(tmpdir, "subtitles.srt"),
-                output_txt_path=os.path.join(tmpdir, "dialogue.txt")
+            print("🔄 Starting transcription with external extractor service...")
+            transcription_result = extractor_service.process_video(video_path)
+            
+            # Generate SRT from transcription result
+            subtitles = group_into_sentences(
+                transcription_result["word_segments"],
+                pause_threshold=PAUSE_THRESHOLD,
+                max_duration=MAX_SUBTITLE_DURATION
             )
             
-            # Get the SRT path from the pipeline output
+            # Save SRT file
             srt_path = os.path.join(tmpdir, "subtitles.srt")
-            txt_path = os.path.join(tmpdir, "dialogue.txt")
+            save_srt(subtitles, srt_path)
+            
+            # Read SRT content
+            with open(srt_path, "r", encoding="utf-8") as f:
+                srt_content = f.read()
             
             print("✅ Transcription completed successfully")
             
         except Exception as e:
-            raise Exception(f"External API transcription failed: {e}")
+            raise Exception(f"Extractor service failed: {e}")
 
-        # Step 3: Translation (if needed)
-        # Note: We'll use the detected language from the API response
-        detected_lang = "en"  # Default, you can extract this from API response if needed
+        # Step 2: Translation (if needed)
+        detected_lang = transcription_result.get("language", "en")
         
         if target_language.lower() != detected_lang.lower():
             try:
-                dialogue = parse_script_file(txt_path)
-                srt_subtitles = parse_srt_file(srt_path)
-                translated_text = translate_scene(dialogue, target_language)
-                translated_dialogue = parse_translated_dialogue(translated_text)
-                aligned_subtitles = align_translations_to_srt(srt_subtitles, translated_dialogue, target_language)
-                srt_path = os.path.join(tmpdir, f"translated_{target_language}.srt")
-                write_srt_file(aligned_subtitles, srt_path)
+                print(f"🔄 Translating from {detected_lang} to {target_language}...")
+                translated_srt = translator_service.translate_srt(
+                    srt_content, 
+                    target_language, 
+                    detected_lang
+                )
+                
+                # Save translated SRT
+                translated_srt_path = os.path.join(tmpdir, f"translated_{target_language}.srt")
+                with open(translated_srt_path, "w", encoding="utf-8") as f:
+                    f.write(translated_srt)
+                
+                srt_content = translated_srt
+                srt_path = translated_srt_path
+                
+                print("✅ Translation completed successfully")
+                
             except Exception as e:
-                raise Exception(f"Translation failed: {e}")
+                print(f"⚠️ Translation failed: {e}, using original subtitles")
+                # Continue with original subtitles if translation fails
 
-        # Step 4: Overlay
-        output_video_path = os.path.join(tmpdir, "final_output.mp4")
+        # Step 3: Return SRT data for frontend customization
+        # Read the final SRT content
+        with open(srt_path, "r", encoding="utf-8") as f:
+            final_srt_content = f.read()
+        
+        # Return SRT data as JSON response
+        return JSONResponse({
+            "status": "success",
+            "message": "Video processed successfully",
+            "srt_content": final_srt_content,
+            "target_language": target_language,
+            "subtitle_count": len(subtitles)
+        })
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+@app.post("/overlay")
+async def overlay_subtitles(
+    video: UploadFile = File(...),
+    srt: UploadFile = File(...),
+    style_json: str = Form(...)
+):
+    """
+    Overlay endpoint that sends video, SRT, and style to external overlay service
+    """
+    tmpdir = tempfile.mkdtemp()
+    try:
+        # Save uploaded files
+        video_path = os.path.join(tmpdir, video.filename)
+        srt_path = os.path.join(tmpdir, srt.filename)
+        
+        with open(video_path, "wb") as f:
+            shutil.copyfileobj(video.file, f)
+        with open(srt_path, "wb") as f:
+            shutil.copyfileobj(srt.file, f)
+
+        # Send to external overlay service
         try:
-            burn_subtitles_from_paths(video_path, srt_path, style_json, output_video_path)
+            print("🔄 Sending to external overlay service...")
+            output_path = overlay_service.overlay_subtitles(video_path, srt_path, style_json)
+            
+            print("✅ Overlay completed successfully")
+            return FileResponse(output_path, filename="output_with_subs.mp4", media_type="video/mp4")
+            
         except Exception as e:
-            raise Exception(f"Subtitle overlay failed: {e}")
-
-        return FileResponse(output_video_path, filename="final_output.mp4", media_type="video/mp4")
+            raise Exception(f"Overlay service failed: {e}")
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
